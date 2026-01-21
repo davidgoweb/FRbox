@@ -1,0 +1,21 @@
+services:
+  frbox:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Image processing limits
+      MAX_IMAGE_SIZE: ${MAX_IMAGE_SIZE:-2097152}
+      MAX_IMAGE_WIDTH: ${MAX_IMAGE_WIDTH:-640}
+      MAX_FACES: ${MAX_FACES:-1}
+
+      # Embedding settings
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-128}
+      SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.85}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
