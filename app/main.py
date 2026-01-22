@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import router
 from app.config import get_settings
-from app.middleware import RequestSizeLimitMiddleware, LoggingMiddleware
+from app.middleware import RequestSizeLimitMiddleware, LoggingMiddleware, APIKeyMiddleware, SecurityHeadersMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -30,6 +30,17 @@ async def lifespan(app: FastAPI):
     logger.info(f"Similarity threshold: {settings.SIMILARITY_THRESHOLD}")
     logger.info(f"Max image width: {settings.MAX_IMAGE_WIDTH}")
     logger.info(f"Max faces: {settings.MAX_FACES}")
+
+    # Security settings
+    if settings.API_KEYS:
+        logger.info(f"API key authentication: ENABLED ({len(settings.API_KEYS)} keys)")
+    else:
+        logger.warning("API key authentication: DISABLED (development mode)")
+    if settings.ALLOWED_ORIGINS:
+        logger.info(f"CORS origins: {settings.ALLOWED_ORIGINS}")
+    else:
+        logger.warning("CORS: Allowing all origins (development mode)")
+    logger.info(f"Rate limit: {settings.RATE_LIMIT_PER_MINUTE} req/min per client")
 
     # Test face_recognition import
     try:
@@ -57,16 +68,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add CORS middleware (allows opening test/index.html directly)
+# Add CORS middleware - use settings or fallback to all origins for development
+allowed_origins = settings.ALLOWED_ORIGINS if settings.ALLOWED_ORIGINS else ["*"]
+logger.info(f"Setting up CORS with origins: {allowed_origins}")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins for testing
-    allow_credentials=True,
+    allow_origins=allowed_origins,
+    allow_credentials=False,  # Set to False to avoid CORS preflight issues
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Add custom middleware
+# Add custom middleware (order matters - last added is executed first)
+app.add_middleware(SecurityHeadersMiddleware)  # Applied first to response
+app.add_middleware(APIKeyMiddleware)  # Validates API keys
 app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(LoggingMiddleware)
 

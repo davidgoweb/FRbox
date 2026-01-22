@@ -8,6 +8,39 @@ import logging
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Supported image formats and their magic bytes
+IMAGE_MAGIC_BYTES = {
+    b'\xFF\xD8\xFF': 'image/jpeg',  # JPEG
+    b'\x89\x50\x4E\x47\x0D\x0A\x1A\x0A': 'image/png',  # PNG
+    b'\x47\x49\x46\x38': 'image/gif',  # GIF
+    b'\x52\x49\x46\x46': 'image/webp',  # WEBP (RIFF header)
+}
+
+
+def validate_image_format(image_bytes: bytes) -> str:
+    """Validate image format using magic bytes.
+
+    Args:
+        image_bytes: Raw image bytes
+
+    Returns:
+        Detected MIME type
+
+    Raises:
+        ValueError: If image format is not supported or invalid
+    """
+    for magic, mime_type in IMAGE_MAGIC_BYTES.items():
+        if image_bytes.startswith(magic):
+            logger.debug(f"Detected image format: {mime_type}")
+            return mime_type
+
+    # Log first 16 bytes for debugging
+    header = ' '.join(f'{b:02X}' for b in image_bytes[:16])
+    logger.warning(f"Invalid image format. Header: {header}")
+    raise ValueError(
+        f"Unsupported image format. Supported formats: JPEG, PNG, GIF, WEBP"
+    )
+
 
 def decode_base64_image(image_data: str) -> np.ndarray:
     """Decode base64 encoded image to numpy array.
@@ -28,8 +61,21 @@ def decode_base64_image(image_data: str) -> np.ndarray:
     if "," in image_data:
         image_data = image_data.split(",", 1)[1]
 
+    # Validate base64 string format
+    if not image_data:
+        raise ValueError("Empty image data")
+
+    # Strip whitespace
+    image_data = image_data.strip()
+
     # Decode base64
-    image_bytes = base64.b64decode(image_data)
+    try:
+        image_bytes = base64.b64decode(image_data, validate=True)
+    except Exception as e:
+        raise ValueError(f"Invalid base64 encoding: {e}")
+
+    # Validate image format using magic bytes
+    validate_image_format(image_bytes)
 
     # Load image using PIL (returns RGB format)
     image = Image.open(BytesIO(image_bytes))

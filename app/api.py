@@ -1,10 +1,12 @@
 """API route definitions for FRbox."""
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-from typing import List
+from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Dict
 import numpy as np
 import logging
 import time
+import re
+from collections import defaultdict
 
 from app.face import decode_base64_image, resize_image, detect_face, extract_embedding
 from app.similarity import verify_match
@@ -14,10 +16,56 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 
+# Simple in-memory rate limiter (stateless, per client)
+_rate_limit_store: Dict[str, List[float]] = defaultdict(list)
+
+def check_rate_limit(client_id: str) -> bool:
+    """Check if client has exceeded rate limit."""
+    now = time.time()
+    minute_ago = now - 60
+
+    # Clean old requests
+    _rate_limit_store[client_id] = [
+        req_time for req_time in _rate_limit_store[client_id]
+        if req_time > minute_ago
+    ]
+
+    # Check limit
+    if len(_rate_limit_store[client_id]) >= settings.RATE_LIMIT_PER_MINUTE:
+        return False
+
+    # Add current request
+    _rate_limit_store[client_id].append(now)
+    return True
+
+def get_client_id(request: Request) -> str:
+    """Get client identifier from API key or IP address."""
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        return f"key:{api_key[:8]}"
+    return f"ip:{request.client.host}"
+
 
 class EmbeddingRequest(BaseModel):
     """Request for embedding extraction."""
-    image_data: str = Field(..., description="Base64 encoded image")
+    image_data: str = Field(..., description="Base64 encoded image", min_length=1)
+
+    @field_validator('image_data')
+    @classmethod
+    def validate_base64(cls, v: str) -> str:
+        """Validate base64 string format."""
+        if not v or not v.strip():
+            raise ValueError("image_data cannot be empty")
+
+        # Remove data URL prefix if present
+        data = v.split(",", 1)[1] if "," in v else v
+
+        # Check if it's a valid base64 string (basic check)
+        # Base64 strings contain only A-Z, a-z, 0-9, +, /, =, and whitespace
+        if not re.match(r'^[A-Za-z0-9+/=\s]+$', data.strip()):
+            raise ValueError("Invalid base64 format")
+
+        return v
 
 
 class EmbeddingResponse(BaseModel):
@@ -48,15 +96,24 @@ class ErrorResponse(BaseModel):
 @router.post(
     "/embedding",
     response_model=EmbeddingResponse,
-    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}, 429: {"model": ErrorResponse}}
 )
-async def extract_embedding_endpoint(request: EmbeddingRequest):
+async def extract_embedding_endpoint(request: EmbeddingRequest, http_request: Request):
     """Extract face embedding from image.
 
     Accepts a base64-encoded image, detects the face, and returns the face embedding vector.
 
     - **image_data**: Base64 encoded image string (with or without data URL prefix)
     """
+    # Apply rate limiting
+    client_id = get_client_id(http_request)
+    if not check_rate_limit(client_id):
+        logger.warning(f"Rate limit exceeded for {client_id}")
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded: Maximum {settings.RATE_LIMIT_PER_MINUTE} requests per minute"
+        )
+
     start_time = time.time()
 
     try:
@@ -95,9 +152,9 @@ async def extract_embedding_endpoint(request: EmbeddingRequest):
 @router.post(
     "/verify",
     response_model=VerifyResponse,
-    responses={400: {"model": ErrorResponse}}
+    responses={400: {"model": ErrorResponse}, 429: {"model": ErrorResponse}}
 )
-async def verify_face(request: VerifyRequest):
+async def verify_face(request: VerifyRequest, http_request: Request):
     """Verify if two face embeddings match.
 
     Compares two face embeddings using cosine similarity and returns whether they match.
@@ -106,6 +163,15 @@ async def verify_face(request: VerifyRequest):
     - **embedding_b**: Second face embedding vector (128 floats)
     - **threshold**: Similarity threshold for match (default: 0.85)
     """
+    # Apply rate limiting
+    client_id = get_client_id(http_request)
+    if not check_rate_limit(client_id):
+        logger.warning(f"Rate limit exceeded for {client_id}")
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded: Maximum {settings.RATE_LIMIT_PER_MINUTE} requests per minute"
+        )
+
     start_time = time.time()
 
     try:

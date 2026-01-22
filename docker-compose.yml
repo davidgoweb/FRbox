@@ -12,6 +12,11 @@ services:
       # Embedding settings
       EMBEDDING_DIM: ${EMBEDDING_DIM:-128}
       SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.85}
+
+      # Security settings
+      API_KEYS: ${API_KEYS:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

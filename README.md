@@ -10,6 +10,10 @@ Stateless face recognition microservice for embedding extraction and verificatio
 - Stateless - no data storage
 - Docker-ready
 - Horizontal-scaling friendly
+- **API key authentication**
+- **Rate limiting**
+- **CORS protection**
+- **Security headers**
 
 ## Quick Start
 
@@ -31,7 +35,15 @@ The API will be available at `http://localhost:8000`
 ### Local Development
 
 ```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Run with default settings (dev mode: no auth, all CORS)
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+# Or with environment variables
+export API_KEYS="your-api-key"
+export ALLOWED_ORIGINS="http://localhost:8080"
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
@@ -45,17 +57,89 @@ On macOS with Homebrew:
 brew install cmake
 ```
 
+### Using Environment File
+
+Create a `.env` file in the project root:
+
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit with your settings
+nano .env
+```
+
+Then run with Docker Compose (it will automatically load the `.env` file):
+```bash
+docker-compose up
+```
+
+## Testing
+
+A web-based test interface is included in the `test/` directory:
+
+```bash
+# Serve the test interface
+cd test
+python -m http.server 8080
+# Or use npx serve .
+```
+
+Then open `http://localhost:8080/index.html` in your browser.
+
+**Test Interface Features:**
+- Register faces and extract embeddings
+- Verify face matches with adjustable threshold
+- Configure API base URL and API key
+- Connection status indicator
+- Faces stored in browser localStorage (stateless client)
+
 ## API Documentation
 
 Once running, visit:
 - Interactive API docs: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
+- Health check: http://localhost:8000/health
+
+## Quick Reference
+
+```bash
+# Quick start (Docker)
+docker-compose up
+
+# Quick start (local)
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# Generate API key
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Test health endpoint
+curl http://localhost:8000/health
+
+# Test embedding extraction
+curl -X POST http://localhost:8000/embedding \
+  -H "Content-Type: application/json" \
+  -d '{"image_data": "base64_encoded_image"}'
+
+# Test with API key
+curl -X POST http://localhost:8000/embedding \
+  -H "X-API-Key: your-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{"image_data": "base64_encoded_image"}'
+```
 
 ## API Endpoints
 
 ### POST /embedding
 
 Extract face embedding from a base64-encoded image.
+
+**Headers:**
+```
+X-API-Key: your-api-key-here  (required if API_KEYS configured)
+Content-Type: application/json
+```
 
 **Request:**
 ```json
@@ -72,9 +156,20 @@ Extract face embedding from a base64-encoded image.
 }
 ```
 
+**Error Responses:**
+- `401 Unauthorized` - Missing or invalid API key
+- `413 Request Too Large` - Image exceeds MAX_IMAGE_SIZE
+- `429 Too Many Requests` - Rate limit exceeded
+
 ### POST /verify
 
 Verify if two face embeddings match.
+
+**Headers:**
+```
+X-API-Key: your-api-key-here  (required if API_KEYS configured)
+Content-Type: application/json
+```
 
 **Request:**
 ```json
@@ -93,6 +188,11 @@ Verify if two face embeddings match.
 }
 ```
 
+**Error Responses:**
+- `400 Bad Request` - Invalid embedding dimensions
+- `401 Unauthorized` - Missing or invalid API key
+- `429 Too Many Requests` - Rate limit exceeded
+
 ### GET /health
 
 Health check endpoint.
@@ -106,9 +206,30 @@ Health check endpoint.
 }
 ```
 
+## Error Codes
+
+| Status | Code | Description |
+|--------|------|-------------|
+| **400** | Bad Request | Invalid input (base64 format, image format, embedding dimensions) |
+| **401** | Unauthorized | Missing or invalid API key |
+| **403** | Forbidden | API key not authorized |
+| **413** | Request Too Large | Image exceeds MAX_IMAGE_SIZE |
+| **429** | Too Many Requests | Rate limit exceeded |
+| **500** | Internal Server Error | Processing error |
+
+**Example Error Response:**
+```json
+{
+  "error": "Unauthorized",
+  "detail": "Missing X-API-Key header"
+}
+```
+
 ## Configuration
 
 Environment variables (see `.env.example`):
+
+### Image Processing
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -117,6 +238,91 @@ Environment variables (see `.env.example`):
 | `MAX_FACES` | 1 | Maximum faces allowed in image |
 | `EMBEDDING_DIM` | 128 | Output embedding dimension |
 | `SIMILARITY_THRESHOLD` | 0.85 | Default verification threshold |
+
+### Security
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_KEYS` | (empty) | Comma-separated list of valid API keys (empty = no auth) |
+| `ALLOWED_ORIGINS` | (empty) | Comma-separated list of allowed CORS origins (empty = allow all) |
+| `RATE_LIMIT_PER_MINUTE` | 60 | Requests per minute per API key or IP address |
+
+## Security
+
+FRbox includes several security features to protect the service in production environments:
+
+### Development vs Production Mode
+
+The service runs in two modes based on configuration:
+
+**Development Mode (default):**
+- `API_KEYS` is empty → No authentication required
+- `ALLOWED_ORIGINS` is empty → All origins allowed
+- Suitable for local development and testing
+
+**Production Mode:**
+- `API_KEYS` is set → API key authentication enabled
+- `ALLOWED_ORIGINS` is set → Only specified origins allowed
+- Required for production deployments
+
+### API Key Authentication
+
+Protect your endpoints by requiring API keys. Set the `API_KEYS` environment variable with a comma-separated list of valid keys:
+
+```bash
+# Generate secure API keys
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Set in environment
+export API_KEYS="key1,key2,key3"
+```
+
+Clients must include the key in the `X-API-Key` header:
+
+```bash
+curl -X POST http://localhost:8000/embedding \
+  -H "X-API-Key: your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{"image_data": "..."}'
+```
+
+**Note**: If `API_KEYS` is empty (default), authentication is disabled for development.
+
+### Rate Limiting
+
+Prevent abuse with per-client rate limiting. Configure requests per minute:
+
+```bash
+export RATE_LIMIT_PER_MINUTE=60
+```
+
+Rate limiting is applied per API key (or per IP address if no API key is provided).
+
+### CORS Protection
+
+Restrict which origins can access your API:
+
+```bash
+export ALLOWED_ORIGINS="https://example.com,https://app.example.com"
+```
+
+**Note**: If `ALLOWED_ORIGINS` is empty (default), all origins are allowed for development.
+
+### Security Headers
+
+The following security headers are automatically added to all responses:
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `X-XSS-Protection: 1; mode=block`
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+- `Content-Security-Policy: default-src 'none'`
+
+### Input Validation
+
+- **Image format validation**: Only JPEG, PNG, GIF, and WEBP formats are accepted (verified via magic bytes)
+- **Base64 validation**: All base64 input is validated before decoding
+- **Size limits**: Maximum image size is enforced via `MAX_IMAGE_SIZE`
 
 ## How It Works
 
@@ -133,16 +339,44 @@ No manual model setup needed!
 ```
 frbox/
 ├── app/
-│   ├── main.py        # FastAPI app entry point
-│   ├── api.py         # Route definitions
-│   ├── face.py        # Face detection + embedding extraction
+│   ├── main.py        # FastAPI app entry point, CORS, middleware setup
+│   ├── api.py         # Route definitions, rate limiting, validation
+│   ├── face.py        # Face detection, embedding extraction, image validation
 │   ├── similarity.py  # Cosine similarity calculation
-│   ├── config.py      # Configuration management
-│   └── middleware.py  # Request limits & logging
+│   ├── config.py      # Configuration management (env vars)
+│   └── middleware.py  # API key auth, security headers, logging
 │
-├── Dockerfile
-├── requirements.txt
+├── test/
+│   └── index.html     # Web-based test interface
+│
+├── .env.example       # Environment variables template
+├── docker-compose.yml # Docker service configuration
+├── Dockerfile         # Container build instructions
+├── requirements.txt   # Python dependencies
 └── README.md
+```
+
+**Request Flow:**
+```
+Client Request
+    ↓
+CORS Middleware (preflight OPTIONS bypass auth)
+    ↓
+Security Headers Middleware
+    ↓
+API Key Middleware (exempts /health, /docs, OPTIONS)
+    ↓
+Request Size Limit Middleware
+    ↓
+Logging Middleware
+    ↓
+API Route Handler
+    ↓
+Rate Limiting Check (per API key or IP)
+    ↓
+Face Processing (decode → validate → detect → embed)
+    ↓
+Response (with security headers)
 ```
 
 ## Performance
@@ -154,10 +388,12 @@ frbox/
 
 ## Design Principles
 
-- **Stateless**: No data persistence, memory-only processing
-- **CPU-only**: No GPU dependencies
-- **Single-face**: Images must contain exactly one face
-- **Horizontal-scaling**: Each instance is independent
+- **Stateless**: No data persistence, memory-only processing (rate limiting per instance)
+- **CPU-only**: No GPU dependencies (dlib CPU inference)
+- **Single-face**: Images must contain exactly one face (enforced via MAX_FACES)
+- **Horizontal-scaling**: Each instance is independent, no shared state required
+- **Security-first**: Authentication, rate limiting, input validation, and security headers built-in
+- **Development-friendly**: Defaults to open access for local testing, easy production hardening
 
 ## License
 
