@@ -10,10 +10,11 @@ Stateless face recognition microservice for embedding extraction and verificatio
 - Stateless - no data storage
 - Docker-ready
 - Horizontal-scaling friendly
-- **API key authentication**
-- **Rate limiting**
-- **CORS protection**
-- **Security headers**
+- Horizontal-scaling friendly
+- API key authentication
+- Rate limiting
+- CORS protection
+- Security headers
 
 ## Quick Start
 
@@ -394,6 +395,44 @@ Response (with security headers)
 - **Horizontal-scaling**: Each instance is independent, no shared state required
 - **Security-first**: Authentication, rate limiting, input validation, and security headers built-in
 - **Development-friendly**: Defaults to open access for local testing, easy production hardening
+
+## Docker Deployment
+
+FRbox includes automated CI/CD via GitHub Actions for building and publishing Docker images to GitHub Container Registry (GHCR).
+
+### Quick Pull and Run
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/davidgoweb/FRbox:latest
+
+# Run with default settings
+docker run -d --name frbox -p 8000:8000 ghcr.io/davidgoweb/FRbox:latest
+```
+
+### Using Docker Compose (Recommended)
+
+An example docker-compose file for production deployment is provided:
+
+```bash
+# Copy the production example
+cp .env.production.example .env
+
+# Edit with your settings (API keys, CORS origins, etc.)
+nano .env
+
+# Start the service
+docker compose -f docker-compose.production.yml --env-file .env up -d
+```
+
+### CI/CD Pipeline
+
+The project includes a GitHub Actions workflow (`.github/workflows/docker-publish.yml`) that automatically:
+- Builds Docker images on push to `main` branch
+- Creates versioned tags when you create release tags (`v1.0.0`, etc.)
+- Publishes to GitHub Container Registry (GHCR)
+
+**For complete deployment guide, see [DEPLOYMENT.md](DEPLOYMENT.md)**
 
 ## License
 

@@ -1,0 +1,68 @@
+# Example Docker Compose file for running FRbox with a pre-built image
+# This pulls the latest image from GitHub Container Registry
+
+services:
+  frbox:
+    # FRbox image from GitHub Container Registry
+    image: ghcr.io/davidgoweb/FRbox:latest
+
+    # Or pin to a specific version for production:
+    # image: ghcr.io/davidgoweb/FRbox:v1.0.0
+
+    ports:
+      - "8000:8000"
+
+    environment:
+      # Image processing limits
+      MAX_IMAGE_SIZE: ${MAX_IMAGE_SIZE:-2097152}      # 2MB default
+      MAX_IMAGE_WIDTH: ${MAX_IMAGE_WIDTH:-640}        # Resize to max 640px width
+      MAX_FACES: ${MAX_FACES:-1}                      # Only accept images with 1 face
+
+      # Embedding settings
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-128}            # 128-dim embeddings (dlib standard)
+      SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.85}  # Default verification threshold
+
+      # Security settings (IMPORTANT: Set these for production!)
+      # Generate API keys: python -c "import secrets; print(secrets.token_urlsafe(32))"
+      API_KEYS: ${API_KEYS:-}                         # Empty = no auth (dev mode only!)
+
+      # Comma-separated list of allowed origins (empty = allow all for dev)
+      # Example: https://example.com,https://app.example.com
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+
+      # Rate limiting per API key or IP address
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Optional: Add resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 1G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
+
+# Optional: Add a reverse proxy (Nginx) for production
+# Uncomment and configure if you need HTTPS, custom domain, etc.
+#
+# nginx:
+#   image: nginx:alpine
+#   ports:
+#     - "443:443"
+#     - "80:80"
+#   volumes:
+#     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#     - ./ssl:/etc/nginx/ssl:ro
+#   depends_on:
+#     - frbox
+#   restart: unless-stopped

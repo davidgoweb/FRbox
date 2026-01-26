@@ -4,6 +4,12 @@ test
 claude.md
 plan.md
 test_api.py
+
+# Navigator context markers
+.context-markers/
+
+# Navigator temporary files
+.agent/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
