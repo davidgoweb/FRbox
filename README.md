@@ -360,7 +360,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 This enables automatic monitoring and restart by orchestration tools like Docker Swarm, Kubernetes, or ECS.
 
-**For complete deployment guide including troubleshooting, SSL configuration, and monitoring, see [DEPLOYMENT.md](DEPLOYMENT.md)**
 
 ## Error Codes
 
