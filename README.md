@@ -1,7 +1,7 @@
 # FRbox - Stateless Face Recognition Tool
 
 Stateless face recognition microservice for embedding extraction and verification.
-
+ 
 ## Features
 
 ### Core Functionality
