@@ -34,6 +34,13 @@ class Settings:
         self.API_VERSION: str = "1.0.0"
 
 
+@lru_cache
 def get_settings() -> Settings:
-    """Get settings instance."""
+    """Get cached settings instance."""
     return Settings()
+
+
+def reload_settings() -> Settings:
+    """Clear cache and reload settings from environment."""
+    get_settings.cache_clear()
+    return get_settings()

@@ -10,7 +10,7 @@ from collections import defaultdict
 
 from app.face import decode_base64_image, resize_image, detect_face, extract_embedding
 from app.similarity import verify_match
-from app.config import get_settings
+from app.config import get_settings, reload_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -208,3 +208,36 @@ async def verify_face(request: VerifyRequest, http_request: Request):
     except Exception as e:
         logger.error(f"Error verifying face: {e}")
         raise HTTPException(status_code=500, detail="Failed to verify face")
+
+
+class ReloadResponse(BaseModel):
+    """Response for config reload."""
+    status: str
+    message: str
+
+
+@router.post("/admin/reload-config", response_model=ReloadResponse)
+async def reload_config_endpoint():
+    """Reload configuration from environment variables.
+
+    Clears the cached settings and reloads from current environment variables.
+    Useful after updating environment variables without restarting the container.
+    """
+    try:
+        # Reload settings
+        new_settings = reload_settings()
+
+        # Update global settings variable
+        global settings
+        settings = new_settings
+
+        # Log the reload
+        logger.info("Configuration reloaded from environment")
+
+        return ReloadResponse(
+            status="success",
+            message="Configuration reloaded successfully"
+        )
+    except Exception as e:
+        logger.error(f"Error reloading configuration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reload configuration: {str(e)}")
