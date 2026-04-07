@@ -15,7 +15,7 @@ class Settings:
 
         # Embedding settings
         self.EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "128"))
-        self.SIMILARITY_THRESHOLD: float = float(os.getenv("SIMILARITY_THRESHOLD", "0.85"))
+        self.SIMILARITY_THRESHOLD: float = float(os.getenv("SIMILARITY_THRESHOLD", "0.96"))
 
         # Security settings
         # API keys - comma-separated list of valid keys (empty = no auth required for dev)

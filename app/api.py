@@ -1,6 +1,6 @@
 """API route definitions for FRbox."""
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Dict
 import numpy as np
 import logging
@@ -78,7 +78,15 @@ class VerifyRequest(BaseModel):
     """Request for face verification."""
     embedding_a: List[float]
     embedding_b: List[float]
-    threshold: float = Field(default=0.90, ge=0.0, le=1.0)
+    threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @model_validator(mode='before')
+    @classmethod
+    def set_default_threshold(cls, data):
+        if isinstance(data, dict):
+            if data.get('threshold') in [None, '', 'null']:
+                data['threshold'] = settings.SIMILARITY_THRESHOLD
+        return data
 
 
 class VerifyResponse(BaseModel):
