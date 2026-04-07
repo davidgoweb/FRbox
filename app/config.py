@@ -34,7 +34,6 @@ class Settings:
         self.API_VERSION: str = "1.0.0"
 
 
-@lru_cache
 def get_settings() -> Settings:
-    """Get cached settings instance."""
+    """Get settings instance."""
     return Settings()
